@@ -1,6 +1,6 @@
-import sys
-import string
-import smtplib
+import sys, shelve, getpass, string, email
+import smtplib, poplib
+from email import parser
 from re import *
 
 
@@ -14,13 +14,13 @@ def ask(question):
 def isGoodEmail(addr):
 	return pat.search(addr)
 
-def getSender():
-	sender=ask('From: ')
-	if isGoodEmail(sender): 
-		return sender
+def getUser():
+	user=ask('Your email address: ')
+	if isGoodEmail(user): 
+		return user
 	else:
 		print 'Invalid email address, try again:'
-		return getSender()
+		return getUser()
 
 def getReceiver():
 	receiver=ask('To: ')
@@ -38,56 +38,123 @@ def getSubject():
 		if ans=='N' or ans=='n':return getSubject()
 		else: return '[No subject]'
 
-def getMessage():
-	message=ask('Message: ')
-	return message
+def getPassword(user):
+	password= getpass.getpass('enter password for account %s: '%user)
+	return password
 
-def sendMail(FROM,TO,SUBJECT,TEXT,PWD):
-	BODY = string.join((
-        	"From: %s" % FROM,
-        	"To: %s" % TO,
-       		 "Subject: %s" % SUBJECT ,
+def sendMail(sender,receiver,subject,text,pwd):
+	msgBody = string.join((
+        	"From: %s" % sender,
+        	"To: %s" % receiver,
+       		 "Subject: %s" % subject ,
        		 "",
-       		 TEXT
+       		 text
       		  ), "\r\n")
-	USERID=FROM[0:FROM.find('@')]
+	user=sender[0:sender.find('@')] #get string before '@'
 	server = smtplib.SMTP('smtp.gmail.com:587')
 	server.starttls()
-	server.login(USERID,PWD)
-	server.sendmail(FROM, TO, BODY)
+	server.login(user,pwd)
+	server.sendmail(sender, receiver, msgBody)
 	server.quit()
-	#do sth here
 
-def writeMail():
-	sender=getSender()
+def connect(uid,pwd):
+	print 'Connecting...'
+	pop_conn=poplib.POP3_SSL('pop.gmail.com')
+	pop_conn.user(userid)
+	pop_conn.pass_(password)
+	print pop_conn.getwelcome()
+	return pop_conn
+
+def composeMail(sender,password):
+	print 'composing a new message...'
+	sender=userid
 	receiver=getReceiver()
 	subject=getSubject()
-	message=getMessage()
+	message=ask('Message: ')
 	ans= ask('Ready to send?(Y/N)')
 	if ans=='Y' or ans=='y':
-		password=ask('Please provide password for account %s:'% sender)
+		print 'sending...'
 		sendMail(sender,receiver,subject,message,password)
 		print 'email sent to ',receiver,' successfully!'
-		#print sender, receiver, subject,message
 	else:
 		print 'Message abandoned'
 
-def getAction():
+
+def extractMessageBody(msg):
+	for part in msg.walk():
+		if part.get_content_type()=='text/plain':
+			return part.get_payload()
+
+def getInsideAction(messages):
+	global userid,password
 	action=ask('command: ')
-	if action=='new':
-		print 'composing a new email...'
-		writeMail()
-	elif action=='quit':
-		sys.exit(0)
-	elif action=='read':
-		print 'under dev..'
+	if action=='ls':
+		print 'Messages in Inbox:'
+		i=0
+		while i<len(messages): 
+			print '[',i+1,'] :',messages[i]['subject']
+			i=i+1
+		getInsideAction(messages)
+	elif action=='quit':	
+		#pop_conn.quit()
+		userid='' #clear the data
+		password=''
+		print 'You are logged out'
+		print '[Options: login, quit...]\n'
 		getAction()
+	elif action=='new':
+		composeMail(userid,password)
+		getInsideAction(messages)
+	elif action=='open':
+		index=int(ask("please specify the mail number: "))
+		#print index
+		print extractMessageBody(messages[index-1])
+		getInsideAction(messages)
+	elif action=='help':
+		print '[quit] exit login \n [new] compose new email\n [ls] list out mails in mailbox\n [open] open an email'
+		getInsideAction(messages)
 	else:
 		print 'invalid command'
-		getAction()
+		getInsideAction(messages)
+
+def readMail(pop_conn):
+	#get msg from server
+	msgs= [pop_conn.retr(i) for i in range(1,len(pop_conn.list()[1])+1)  ]
+	msgs=['\n'.join(m[1]) for m in msgs]
+	msgs= [parser.Parser().parsestr(m) for m in msgs]
+	pop_conn.quit() #maybe later?
+	return msgs
+
+
+def login():
+	global userid, password  #### maybe global is not a good solution?
+	userid=getUser()
+	password=getPassword(userid)
+	connection = connect(userid,password)
+
+	messages=readMail(connection)
+	print '[Options: ls, open, new, quit...]\n'
+	getInsideAction(messages)
+
+
+
+def getAction():
+	action=ask('command: ')
+	if action=='quit':
+		sys.exit(0)
+	elif action=='login':
+		print 'Please verify your identity '
+		login()
+	elif action=='help':
+		print '[login] start a login session\n [quit] exit program'	
+	else:
+		print 'invalid command'
 
 if __name__=='__main__':
-	print '\nLiLyMail'
-	print '[avaliable options: read, new, quit..]\n'
-	getAction()
+	print '\nLilyMail'
+	print '[Options: login, quit...]\n'
+	userid=''
+	password=''
+	while True:
+		getAction()
 
