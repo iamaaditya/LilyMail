@@ -1,3 +1,13 @@
 LilyMail is an email client program written in Python. 
 
-Everyone is welcome to improve it.
+With LilyMail you can:
+* write emails (with or without attachments)
+* check mail inbox
+* read emails
+* reply to emails
+* download attachments
+
+All these can be done in a command-line console.
+
+
+PS. Everyone is welcome to improve LilyMail.
